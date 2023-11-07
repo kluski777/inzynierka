@@ -2,44 +2,13 @@
 #include <cstdlib>
 #include <cmath>
 #include <fstream>
-
-typedef long double ldouble;
-const int N = 64000;
-const int zElem = 4;
-const int xElem = zElem*10, yElem = zElem*10;
-	// założenie też jest takie że wymiary xElem == yElem
-	// do tego liczba komórek jest zawsze parzysta
-
-const int xElemD2 = xElem/2, yElemD2 = yElem/2, zElemD2 = zElem/2; // 20, 20, 2
-
-//////////////////////////// Dane wielkości
-const ldouble T = 6.93792e15; 				// okres obrotu w sekundach
-const ldouble M = 6e42;
-const ldouble mMin = M/N;	 					// masa 1 cząstki w kg 
-const ldouble G = 6.67e-11; 					// stała grawitacyjna w SI.
-const ldouble w = 2*M_PI/T; 					// częstość kołowa rad.
-const ldouble dt = T/1000;					// krok czasowy, minimum 1000 kroków na obrót
-const ldouble dx = 9.258e19/zElem;			// wymiar jednej kratki
-
-//////////////////////////// Pomocnicze żeby przyspieszyć obliczenia
-const ldouble dx2 = dx*dx;
-const ldouble dx12 = .5*dx;
-const ldouble coswt = cos(w*dt);
-const ldouble sinwt = sin(w*dt);
-const ldouble Gm = G*mMin;
-const ldouble dt2mdx = dt*dt/(2*dx*mMin); // rzędu 10^-32, w mianowniku 2 powinno być
-const ldouble GM = G*M;
-const ldouble m2 = mMin/2;
-const ldouble dt2 = dt*dt;
-const ldouble dt4 = 1.0/(4*dt2);
-const ldouble potConst = (2.0/3.0)*M_PI*dx2*G*mMin/pow(dx,3.0);
-const ldouble one6th = 1.0/6.0;
+#include "stale_i_funkcje.hpp"
 
 class massPoint{
 	public:
 		ldouble oldX, oldY, oldZ, x, y, z;
 		int liczba;
-		massPoint(ldouble wspX, ldouble wspY, ldouble wspZ, int ile): oldX{wspX}, oldY{wspY}, oldZ{wspZ}, z{oldZ}, y{oldX*sinwt + oldY*coswt}, x{oldX*coswt - oldY*sinwt}, liczba{ile}{}
+		massPoint(ldouble wspX, ldouble wspY, ldouble wspZ, int ile): oldX{wspX}, oldY{wspY}, oldZ{wspZ}, z{oldZ}, y{oldX*sinwt + oldY*coswt}, x{oldX*coswt - oldY*sinwt}, liczba{ile}{} // tego sie chyba nie da lepiej napisać
 		massPoint(){}
 };
 
@@ -54,14 +23,12 @@ class dane{
 		~dane();
 		void potEdge(); 		// przypisanie brzegów ścian potencjału
 		void potAssign();		// przypisanie potencjałów dla reszty pudła
-		ldouble step();
+		void potAss1stIter();
+		void savePot();
+		ldouble step(int);
 };
 
-inline int xCoord2indx(ldouble coord){	return round(coord/dx + xElemD2); }
-inline int yCoord2indx(ldouble coord){ return round(coord/dx + yElemD2); }
-inline int zCoord2indx(ldouble coord){	return round(coord/dx + zElemD2); }
-
-void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& E){
+void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& E){ // to i potAssign przerobić
 	ldouble X = point.x;
 	ldouble Y = point.y;
 	ldouble Z = point.z;
@@ -75,22 +42,18 @@ void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& E){
 
 	ldouble cr3 = dt2/(pow(X*X+Y*Y+Z*Z, 3.0/2.0));
 
-	if(i > 0 && i < xElem-1 && j>= 0 && j<yElem && k>=0 && k<zElem){
-		point.x = 2*X - point.oldX - (pot[i+1][j][k] - pot[i-1][j][k])*dt2mdx;
-		//printf("Wyraz 1: %Le, wyraz 2: %Le\n", 2*X - point.oldX, (pot[i+1][j][k] - pot[i-1][j][k])*dt2mdx);
-	}
-	else{ // 38 rzędzów wielkości różnicy między tymi dwoma sposobami. 
+	if(i > 0 && i < xElem-1 && j>= 0 && j<yElem && k>=0 && k<zElem)
+		point.x = 2*X - point.oldX - (pot[i+1][j][k] - pot[i-1][j][k])*dt2dx;
+	else
 		point.x = 2*X - point.oldX - GM*X*cr3;
-		//printf("Wyraz 1: %Le, wyraz 2: %Le\n", 2*X - point.oldX, GM*X*cr3); // 4 rzędy wielkości różnicy.
-	}
 	
 	if(j > 0 && j < yElem-1 && i>=0 && i<xElem && k>=0 && k<zElem)
-		point.y = 2*Y - point.oldY - (pot[i][j+1][k] - pot[i][j-1][k])*dt2mdx;
+		point.y = 2*Y - point.oldY - (pot[i][j+1][k] - pot[i][j-1][k])*dt2dx;
 	else
 		point.y = 2*Y - point.oldY - GM*Y*cr3;
 
 	if(k > 0 && k < zElem-1 && i>=0 && i<xElem && j>=0 && j<yElem)
-		point.z = 2*Z - point.oldZ - (pot[i][j][k+1] - pot[i][j][k-1])*dt2mdx;
+		point.z = 2*Z - point.oldZ - (pot[i][j][k+1] - pot[i][j][k-1])*dt2dx;
 	else
 		point.z = 2*Z - point.oldZ - GM*Z*cr3;
 
@@ -105,30 +68,53 @@ void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& E){
 	k = zCoord2indx(point.z);
 	
 	if( i >= 0 && i < xElem && j >= 0 && j < yElem && k >= 0 && k < zElem)
-		density[i][j][k] -= point.liczba;
+		density[i][j][k] += point.liczba;
 }
+
+
+
+
+
+
+
+
 
 int main(){
 	dane symEZ;
+	
+	std::ofstream particle1("czastka1", std::ios::binary);
+	std::ofstream particle2("czastka2", std::ios::binary);
+	std::ofstream particle3("czastka3", std::ios::binary);
+	std::ofstream particle4("czastka4", std::ios::binary);
+	std::ofstream ener("Energia", std::ios::binary);
 
-	std::ofstream fileOut("toPlot.txt");
-	std::ofstream pot("Potencjaly", std::ios::binary); // potem można dodać poruszające się wykresy niby.
-
-	for(int i=0; i<10000; i++){
-		printf("Energia = %Le\n", symEZ.step());
-		fileOut << symEZ.place[10][10][0].x << " " << symEZ.place[10][10][0].y << " " << symEZ.place[10][10][0].z << std::endl;
+	for(int i=0; i<1000; i++){
+		printf("Energia: %Le\n", symEZ.step(i));
+		particle1 << symEZ.place[0][0][0].x << " " << symEZ.place[0][0][0].y << " " << symEZ.place[0][0][0].z <<  std::endl;
+		particle2 << symEZ.place[10][10][0].x << " " << symEZ.place[10][10][0].y << " " << symEZ.place[10][10][0].z << std::endl;
+		particle3 << symEZ.place[20][20][1].x << " " << symEZ.place[20][20][1].y << " " << symEZ.place[20][20][1].z << std::endl;
+		particle4 << symEZ.place[xEdge][yEdge][zEdge].x << " " << symEZ.place[xEdge][yEdge][zEdge].y << " " << symEZ.place[xEdge][yEdge][zEdge].z << std::endl;
 	}
 
-	for(int i=0; i<xElem; i++){
-		for(int j=0; j<yElem; j++)
-			pot << symEZ.pot[i][j][0] << " ";
-		pot << std::endl;
-	}
+	particle1.close();
+	particle2.close();
+	particle3.close();
+	particle4.close();
+
+	symEZ.savePot();
 
 	return 0;
 }
 
-ldouble dane::step(){
+
+
+
+
+
+
+
+
+ldouble dane::step(int i){
 	E = 0;
 	for(int i=0; i<xElem; i++){
 		for(int j=0; j<yElem; j++){
@@ -139,31 +125,28 @@ ldouble dane::step(){
 	
 	E *= m2;
 
+	if( i%10 == 0 )
+		potEdge();
 	potAssign();
-	for(int i=0; i<xElem; i++){
-		for(int j=0; j<yElem; j++){
-			for(int k=0; k<zElem; k++)
-				E += density[i][j][k]*pot[i][j][k];
+	for(int k=0; k<zElem; k++){
+		for(int i=0; i<xElem; i++){
+			E += density[i][i][k]*pot[i][i][k];
+			for(int j=i+1; j<yElem-i; j++)
+				E += density[i][j][k]*pot[i][j][k] + density[j][i][k]*pot[j][i][k];
 		}
 	}
 	return E;
 }
 
-dane::~dane(){
-	for(int x=0; x<xElem; x++){
-		for(int y=0; y<yElem; y++){
-			delete [] space[x][y];
-			delete [] pot[x][y];
-			delete [] density[x][y];
+void dane::savePot(){
+	for(int k=0; k<zElem; k++){
+		std::ofstream potFile("Potencjal" + std::to_string(k+1), std::ios::binary);
+		for(int i=0; i<xElem; i++){
+			for(int j=0; j<yElem; j++)
+				potFile << pot[i][j][k] << " ";
+			potFile << std::endl;
 		}
-		delete [] space[x];
-		delete [] pot[x];
-		delete [] density[x];
 	}
-	delete [] space;
-	delete [] pot; 
-	delete [] density;
-	delete [] place;
 }
 
 dane::dane(){
@@ -180,7 +163,7 @@ dane::dane(){
 			density[i][j] = new int[zElem];
 			pot[i][j] = new ldouble[zElem];		
 			for(int k=0; k<zElem; k++)
-				space[i][j][k] = 1.0/(dx*sqrt(double(i*i + j*j + k*k))); // z tablicowanie odległości
+				space[i][j][k] = 1.0/(dx*sqrt(double(i*i + j*j + k*k)));
 		}
 	}
 
@@ -196,15 +179,11 @@ dane::dane(){
 	////////////// Koniec alokacji, przypisywanie.
 
 	int xIndx, yIndx, zIndx;
-	for(int i=0; i<xElem; i++){
-		for(int j=0; j<yElem; j++){
-			for(int k=0; k<zElem*10; k++){
-				xIndx = rand()%xElem;
-				yIndx = rand()%yElem;
-				zIndx = rand()%zElem;
-				place[xIndx][yIndx][zIndx].liczba++; // ilość cząstek w komórce
-			}
-		}
+	for(int i=0; i<N; i++){
+		xIndx = rand()%xElem;
+		yIndx = rand()%yElem;
+		zIndx = rand()%zElem;
+		place[xIndx][yIndx][zIndx].liczba++; // ilość cząstek w komórce
 	}
 
 	for(int i=0; i<xElem; i++){
@@ -214,84 +193,148 @@ dane::dane(){
 		}
 	}
 
-	potEdge();
+	potEdge();			// Przypisanie do brzegów (powinno sie szybciej liczyć).
+	potAss1stIter();	// Reszta tablicy liczona do zbieżności.
 }
 
+dane::~dane(){
+   for(int x=0; x<xElem; x++){
+      for(int y=0; y<yElem; y++){
+         delete [] space[x][y];
+         delete [] pot[x][y];
+         delete [] density[x][y];
+      }
+      delete [] space[x];
+      delete [] pot[x];
+      delete [] density[x];
+   }
+   delete [] space;
+   delete [] pot;
+   delete [] density;
+   delete [] place;
+}
 
-void dane::potAssign(){ //
-	for(int i=1; i<xElem-1; i++){
-		for(int j=1; j<yElem-1; j++){
-			for(int k=1; k<zElem-1; k++)
-				pot[i][j][k] = one6th*(pot[i-1][j][k]+pot[i+1][j][k]+pot[i][j-1][k]+pot[i][j+1][k]+pot[i][j][k-1]+pot[i][j][k+1]) - potConst*density[i][j][k];
+void dane::potAssign(){ // zmienić algorytm
+	for(int repeat=0; repeat<3; repeat++){
+		for(int k=1; k<zEdge; k++){
+	  		for(int i=1; i<xEdge; i++){
+				pot[i][i][k] = one6th*(pot[i-1][i][k]+pot[i+1][i][k]+pot[i][i-1][k]+pot[i][i+1][k]+pot[i][i][k+1]+pot[i][i][k-1] - potConst*density[i][i][k]);
+				for(int j=i+1; j<yEdge; j++){			  
+					pot[i][j][k] = one6th*(pot[i-1][j][k]+pot[i+1][j][k]+pot[i][j-1][k]+pot[i][j+1][k]+pot[i][j][k-1]+pot[i][j][k+1]) - potConst*density[i][j][k];
+					pot[j][i][k] = one6th*(pot[j-1][i][k]+pot[j+1][i][k]+pot[j][i+1][k]+pot[j][i-1][k]+pot[j][i][k+1]+pot[j][i][k-1] - potConst*density[j][i][k]);
+				}
+			}
 		}
 	}
 }
 
-
 void dane::potEdge(){
-	// Część z przypisywaniem ścianek do poprawy
 	for(int i=0; i<xElem; i++){
 		for(int j=0; j<yElem; j++){
 			pot[i][j][0] = 0.0;
-			pot[i][j][zElem-1] = 0.0;
-			for(int k=0; k<zElem; k++){
+			pot[i][j][zEdge] = 0.0;
+			for(int wspZ=0; wspZ<zElem; wspZ++){
 				for(int wspX=0; wspX<xElem; wspX++){
 					for(int wspY=0; wspY<yElem; wspY++){
-						pot[i][j][0] -= i==wspX && j == wspY && k == 0 ? 0 : density[wspX][wspY][k] * space[abs(i-wspX)][abs(j-wspY)][k];
-						pot[i][j][zElem-1] -= i == wspX && j == wspY && k == zElem-1 ? 0 : density[wspX][wspY][zElem - 1 - k] * space[abs(i-wspX)][abs(j-wspY)][zElem - 1 - k];
+						pot[i][j][0] -= i==wspX && j == wspY && wspZ == 0 ? 0 : density[wspX][wspY][wspZ] * space[abs(i-wspX)][abs(j-wspY)][wspZ];
+						pot[i][j][zEdge] -= i == wspX && j == wspY && wspZ == zEdge ? 0 : density[wspX][wspY][zEdge - wspZ] * space[abs(i-wspX)][abs(j-wspY)][zEdge - wspZ];
 					}
 				}
 			}
 			pot[i][j][0] *= Gm;
-			pot[i][j][zElem-1] *= Gm; 
+			pot[i][j][zEdge] *= Gm; 
 		}
 	}
 
-	// brzeg x
-	for(int i=0; i<xElem; i++){
-		for(int k=1; k<zElem-1; k++){
-			pot[i][0][k] = 0;
-			pot[i][yElem-1][k] = 0;	// czy zerowanie jest konieczne?
+	for(int k=1; k<zEdge; k++){
+		pot[0][0][k] = 0.0;
+		pot[0][yEdge][k] = 0.0;
+		pot[xEdge][0][k] = 0.0;
+		pot[xEdge][yEdge][k] = 0.0;
+		
+		for(int wspX=0; wspX<xElem; wspX++){
+			for(int wspY=0; wspY<yElem; wspY++){
+				for(int wspZ=0; wspZ<k; wspZ++){ 
+					pot[0][0][k] -= density[wspX][wspY][wspZ] * space[wspX][wspY][k-wspZ];
+					pot[0][yEdge][k] -= density[wspX][wspY][wspZ] * space[wspX][yEdge-wspY][k-wspZ];
+					pot[xEdge][0][k] -= density[wspX][wspY][wspZ] * space[xEdge-wspX][wspY][k-wspZ];
+					pot[xEdge][yEdge][k] -= density[wspX][wspY][wspZ] * space[xEdge-wspX][yEdge-wspY][k-wspZ];
+				}
+				for(int wspZ=k+1; wspZ<zEdge; wspZ++){
+					pot[0][0][k] -= density[wspX][wspY][wspZ] * space[wspX][wspY][wspZ-k];
+					pot[0][yEdge][k] -= density[wspX][wspY][wspZ] * space[wspX][yEdge-wspY][wspZ-k];
+					pot[xEdge][0][k] -= density[wspX][wspY][wspZ] * space[xEdge-wspX][wspY][wspZ-k];
+					pot[xEdge][yEdge][k] -= density[wspX][wspY][wspZ] * space[xEdge-wspX][yEdge-wspY][wspZ-k];
+				}
+			}
+		}
+		pot[0][0][k] *= Gm;
+		pot[xEdge][0][k] *= Gm;
+		pot[0][yEdge][k] *= Gm;
+		pot[xEdge][yEdge][k] *= Gm;
+	}
+
+	for(int k=1; k<zEdge; k++){
+		for(int i=1; i<xEdge; i++){
+			pot[0][i][k] = 0.0;
+			pot[xEdge][i][k] = 0.0;
+			pot[i][0][k] = 0.0;
+			pot[i][yEdge][k] = 0.0;
 			for(int wspX=0; wspX<xElem; wspX++){
 				for(int wspY=0; wspY<yElem; wspY++){
-					for(int wspZ=0; wspZ<zElem; wspZ++){
-						pot[i][0][k] -= wspX == i && wspY == 0 && wspZ == k ? 0 : density[wspX][wspY][wspZ] * space[abs(i-wspX)][wspY][abs(wspZ-k)];
-						pot[i][yElem-1][k] -= wspX == i && wspY == yElem-1 && wspZ == k ? 0 : density[wspX][wspY][wspZ] * space[abs(i-wspX)][yElem-1-wspY][abs(wspZ-k)];
+					for(int wspZ=0; wspZ<k; wspZ++){
+						pot[0][i][k] -= density[wspX][wspY][wspZ] * space[wspX][abs(i-wspY)][k-wspZ];
+						pot[xEdge][i][k] -= density[wspX][wspY][wspZ] * space[xEdge-wspX][abs(i-wspY)][k-wspZ];
+						pot[i][0][k] -= density[wspX][wspY][wspZ] * space[abs(wspX-i)][wspY][k-wspZ];
+						pot[i][yEdge][k] -= density[wspX][wspY][wspZ] * space[abs(wspX-i)][yEdge-wspY][k-wspZ];
+					}
+					for(int wspZ=k+1; wspZ<zElem; wspZ++){
+						pot[0][i][k] -= density[wspX][wspY][wspZ] * space[wspX][abs(i-wspY)][wspZ-k];
+						pot[xEdge][i][k] -= density[wspX][wspY][wspZ] * space[xEdge-wspX][abs(i-wspY)][wspZ-k];
+						pot[i][0][k] -= density[wspX][wspY][wspZ] * space[abs(wspX-i)][wspY][wspZ-k];
+						pot[i][yEdge][k] -= density[wspX][wspY][wspZ] * space[abs(wspX-i)][wspY][wspZ-k];
 					}
 				}
 			}
+			for(int wspB=0; wspB<xElem; wspB++){
+				for(int wspA=0; wspA<i; wspA++){
+					pot[i][0][k] -= density[wspA][wspB][k] * space[i-wspA][wspB][0];
+					pot[i][yEdge][k] -= density[wspA][wspB][k] * space[i-wspA][yEdge - wspB][0];
+					pot[0][i][k] -= density[wspB][wspA][k] * space[wspB][i-wspA][k];
+					pot[xEdge][i][k] -= density[wspB][wspA][k] * space[xEdge-wspB][i-wspA][0];
+				}
+				for(int wspA=i+1; wspA<yElem; wspA++){
+					pot[i][0][k] -= density[wspA][wspB][k] * space[wspA-i][wspB][0];
+					pot[i][yEdge][k] -= density[wspA][wspB][k] * space[wspA-i][yEdge-wspB][0];
+					pot[0][i][k] -= density[wspB][wspA][k] * space[wspB][wspA-i][0];
+					pot[xEdge][i][k] -= density[wspB][wspA][k] * space[xEdge-wspB][wspA-i][0];
+				}
+			}
+			for(int wsp=0; wsp<xEdge; wsp++){
+				pot[i][0][k] -= density[i][wsp+1][k] * space[0][wsp+1][0];
+				pot[i][yEdge][k] -= density[i][wsp][k] * space[0][yEdge-wsp][0];
+				pot[0][i][k] -= density[wsp+1][i][k] * space[wsp+1][0][0];
+				pot[xEdge][i][k] -= density[wsp][i][k] * space[xEdge-wsp][0][0];
+			}
+			pot[0][i][k] *= Gm;
+			pot[xEdge][i][k] *= Gm;
 			pot[i][0][k] *= Gm;
-			pot[i][yElem-1][k] *= Gm;
-		}
-	}
-	
-	// brzeg y, może by to upchać do jednej pętli
-	for(int j=1; j<yElem-1; j++){
-		for(int k=1; k<zElem-1; k++){
-			pot[0][j][k] = 0;
-			pot[xElem-1][j][k] = 0;
-			for(int wspX=0; wspX<xElem; wspX++){
-				for(int wspY=0; wspY<yElem; wspY++){
-					for(int wspZ=0; wspZ<zElem; wspZ++){
-						pot[0][j][k] -=  wspX == 0 && wspY == j && wspZ == k ? 0 : density[wspX][wspY][wspZ] * space[wspX][abs(wspY-j)][abs(wspZ-k)];
-						pot[xElem-1][j][k] -= wspX == xElem-1 && wspY == j && wspZ == k ? 0 : density[wspX][wspY][wspZ] * space[xElem-1-wspX][abs(wspY-j)][abs(wspZ-k)];
-					}
-				}
-			}
-			pot[0][j][k] *= Gm;
-			pot[xElem-1][j][k] *= Gm;
+			pot[i][yEdge][k] *= Gm;
 		}
 	}
 
+}
+
+void dane::potAss1stIter(){
 	bool hasChanged = true;
 	while(hasChanged){
 		hasChanged = false;
-		for(int i=1; i<xElem-1; i++){
-			for(int j=1; j<yElem-1; j++){
-				for(int k=1; k<zElem-1; k++){
+		for(int i=1; i<xEdge; i++){
+			for(int j=1; j<yEdge; j++){
+				for(int k=1; k<zEdge; k++){
 					ldouble temp = pot[i][j][k];
 					pot[i][j][k] = one6th*(pot[i-1][j][k]+pot[i+1][j][k]+pot[i][j-1][k]+pot[i][j+1][k]+pot[i][j][k-1]+pot[i][j][k+1]) - potConst*density[i][j][k];
-					if( temp != pot[i][j][k] )
+					if( fabs(temp-pot[i][j][k]) > 1e-10 )
 						hasChanged = true;
 				}
 			}
@@ -299,5 +342,5 @@ void dane::potEdge(){
 	}
 }
 
-// TODO cząstki nie wyłażą za siatkę, ale część przyspieszenia od potencjałów jest śmiesznie niska. (potencjalnie stała do sprawdzenia)
+// TODO jakiś refactoring czy coś w ten deseń żeby wszystko było bardziej czytelne
 // TODO niedokładności na poziomie ~5% przy przypisaniu wartości początkowych, ~1/6 dx

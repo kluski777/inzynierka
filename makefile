@@ -1,7 +1,7 @@
 CXX=g++
 CXXFLGAS=-std=c++11
 SOURCES = main.cpp
-TARGET=result
+TARGET=compiled
 
 all: $(TARGET)
 	./$(TARGET)	
