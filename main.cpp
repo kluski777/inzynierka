@@ -8,7 +8,7 @@ class massPoint{
 	public:
 		ldouble oldX, oldY, oldZ, x, y, z;
 		int liczba;
-		massPoint(ldouble wspX, ldouble wspY, ldouble wspZ, int ile): oldX{wspX}, oldY{wspY}, oldZ{wspZ}, z{oldZ}, y{oldX*sinwt + oldY*coswt}, x{oldX*coswt - oldY*sinwt}, liczba{ile}{} // tego sie chyba nie da lepiej napisać
+		massPoint(ldouble wspX, ldouble wspY, ldouble wspZ, int ile): oldX{wspX}, oldY{wspY}, oldZ{wspZ}, z{oldZ}, liczba{ile}{}
 		massPoint(){}
 };
 
@@ -16,7 +16,7 @@ class dane{
 	public:
 		massPoint*** place; 	// położenia ciał, do verleta potrzebne
 		int*** density; 		// ilość ciał w kratce
-		ldouble*** pot, E;
+		ldouble*** pot, T, V;
 		ldouble*** space;
 
 		dane(); 					// warunki początkowe
@@ -25,10 +25,10 @@ class dane{
 		void potAssign();		// przypisanie potencjałów dla reszty pudła
 		void potAss1stIter();
 		void savePot();
-		ldouble step(int);
+		void step(int, ldouble*);
 };
 
-void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& E){ // to i potAssign przerobić
+void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& T, ldouble& V){
 	ldouble X = point.x;
 	ldouble Y = point.y;
 	ldouble Z = point.z;
@@ -38,9 +38,10 @@ void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& E){ 
 	int k = zCoord2indx(Z);
 
 	if( i>=0 && i<xElem && j>=0 && j<yElem && k>=0 && k<zElem)
-		density[i][j][k] -= point.liczba;
+		density[i][j][k] -= point.liczba;	// zmiana liczby cząstek w kratce.
 
-	ldouble cr3 = dt2/(pow(X*X+Y*Y+Z*Z, 3.0/2.0));
+	ldouble r = sqrt(X*X+Y*Y+Z*Z);			// odległość od środka układu.
+	ldouble cr3 = dt2/(r*r*r);
 
 	if(i > 0 && i < xElem-1 && j>= 0 && j<yElem && k>=0 && k<zElem)
 		point.x = 2*X - point.oldX - (pot[i+1][j][k] - pot[i-1][j][k])*dt2dx;
@@ -57,7 +58,7 @@ void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& E){ 
 	else
 		point.z = 2*Z - point.oldZ - GM*Z*cr3;
 
-	E += dt4*(pow(point.x - point.oldX, 2) + pow(point.y - point.oldY, 2) + pow(point.z - point.oldZ, 2));
+	T += dt4*(pow(point.x - point.oldX, 2) + pow(point.y - point.oldY, 2) + pow(point.z - point.oldZ, 2));
 
 	point.oldX = X;
 	point.oldY = Y;
@@ -68,40 +69,78 @@ void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& E){ 
 	k = zCoord2indx(point.z);
 	
 	if( i >= 0 && i < xElem && j >= 0 && j < yElem && k >= 0 && k < zElem)
-		density[i][j][k] += point.liczba;
+		density[i][j][k] += point.liczba;	// tyle w siatce
+	else
+		V -= GM*point.liczba/r; 		// jak wyszła za siatkę.
 }
 
 
 
 
-
-
-
-
+// może funkcje konwerujące nie działają
 
 int main(){
 	dane symEZ;
+/*
+	for(int i=0; i<xElem; i++){
+		for(int j=0; j<yElem; j++){
+			for(int k=0; k<zElem; k++)
+				printf("wsp (%d, %d, %d) coords => (%Le, %Le, %Le) indx(coords)=> (%d, %d, %d)\n", i, j, k, symEZ.place[i][j][k].x, symEZ.place[i][j][k].y, symEZ.place[i][j][k].z, xCoord2indx(symEZ.place[i][j][k].x), yCoord2indx(symEZ.place[i][j][k].y), zCoord2indx(symEZ.place[i][j][k].z));
+		}
+	}
+*/
 	
-	std::ofstream particle1("czastka1", std::ios::binary);
-	std::ofstream particle2("czastka2", std::ios::binary);
-	std::ofstream particle3("czastka3", std::ios::binary);
-	std::ofstream particle4("czastka4", std::ios::binary);
-	std::ofstream ener("Energia", std::ios::binary);
+	std::ofstream prtcles("droga", std::ios::binary);
+	std::ofstream ener("Energie",  std::ios::binary);
 
-	for(int i=0; i<1000; i++){
-		printf("Energia: %Le\n", symEZ.step(i));
-		particle1 << symEZ.place[0][0][0].x << " " << symEZ.place[0][0][0].y << " " << symEZ.place[0][0][0].z <<  std::endl;
-		particle2 << symEZ.place[10][10][0].x << " " << symEZ.place[10][10][0].y << " " << symEZ.place[10][10][0].z << std::endl;
-		particle3 << symEZ.place[20][20][1].x << " " << symEZ.place[20][20][1].y << " " << symEZ.place[20][20][1].z << std::endl;
-		particle4 << symEZ.place[xEdge][yEdge][zEdge].x << " " << symEZ.place[xEdge][yEdge][zEdge].y << " " << symEZ.place[xEdge][yEdge][zEdge].z << std::endl;
+	ldouble* Es = new ldouble[2]; // energie, Es[0] - kinet. Es[1] - potencja.
+	int ile = 0;
+
+	for(int step=0; step<400; step++){
+		symEZ.step(step, Es);
+		
+		ener << step << " " << Es[0] << " " << Es[1] << " " << Es[0] + Es[1] << std::endl;
+		std::cout << "T = " << Es[0] << ", V = " << Es[1] << ", E = " << Es[0] + Es[1] << std::endl;
+		
+		if( step%25 == 0 ){
+			ile++;
+			std::cout << step << ", ile = " << ile << std::endl;
+			for(int i=0; i<xElem; i++){
+				for(int j=0; j<yElem; j++){
+					for(int k=0; k<zElem; k++)
+						prtcles << symEZ.place[i][j][k].x << ' ' << symEZ.place[i][j][k].y << ' ' << symEZ.place[i][j][k].z << std::endl;
+				}
+			}
+			prtcles << "\t";
+		}
+	}
+	int suma=0, sumX=0, sumY=0, sumZ=0; // sumy cząstek które wywaliło z planszy
+
+	for(int i=0; i<xElem; i++){
+		for(int j=0; j<yElem; j++){
+			for(int k=0; k<zElem; k++){
+				int x = xCoord2indx(symEZ.place[i][j][k].x);
+				int y = yCoord2indx(symEZ.place[i][j][k].y);
+				int z = zCoord2indx(symEZ.place[i][j][k].z);
+				
+				suma += symEZ.place[i][j][k].liczba;
+
+				if( x < 0 || x > xEdge)
+					sumX += symEZ.place[i][j][k].liczba;
+				if( y < 0 || y > yEdge)
+					sumY += symEZ.place[i][j][k].liczba;
+				if( z < 0 || z > zEdge)
+					sumZ += symEZ.place[i][j][k].liczba;
+			}
+		}
 	}
 
-	particle1.close();
-	particle2.close();
-	particle3.close();
-	particle4.close();
+	printf("sum = %d, sumX = %d, sumY = %d, sumZ = %d\n", suma, sumX, sumY, sumZ);
 
-	symEZ.savePot();
+	ener.close();
+	prtcles.close();
+
+	//symEZ.savePot();
 
 	return 0;
 }
@@ -114,28 +153,32 @@ int main(){
 
 
 
-ldouble dane::step(int i){
-	E = 0;
-	for(int i=0; i<xElem; i++){
-		for(int j=0; j<yElem; j++){
-			for(int k=0; k<zElem; k++)
-				verletStep(place[i][j][k], pot, density, E);
+void dane::step(int i, ldouble* Es){
+	Es[0] = 0.0, Es[1] = 0.0;		// 0 to kinetyczna energia, 1 to potencjalna
+	for(int k=0; k<zElem; k++){ 
+		for(int i=0; i<xElem; i++){
+			verletStep(place[i][i][k], pot, density, Es[0], Es[1]);
+			for(int j=i+1; j<yElem; j++){
+				verletStep(place[i][j][k], pot, density, Es[0], Es[1]);
+				verletStep(place[j][i][k], pot, density, Es[0], Es[1]);
+			}
 		}
 	}
 	
-	E *= m2;
+	Es[0] *= m2;
 
-	if( i%10 == 0 )
-		potEdge();
+	//if( i%10 == 0 )
+	potEdge();
 	potAssign();
 	for(int k=0; k<zElem; k++){
 		for(int i=0; i<xElem; i++){
-			E += density[i][i][k]*pot[i][i][k];
+			Es[1] += density[i][i][k]*pot[i][i][k];
 			for(int j=i+1; j<yElem-i; j++)
-				E += density[i][j][k]*pot[i][j][k] + density[j][i][k]*pot[j][i][k];
+				Es[1] += density[i][j][k] * pot[i][j][k] + density[j][i][k]*pot[j][i][k];
 		}
 	}
-	return E;
+
+	Es[1] *= mMin;
 }
 
 void dane::savePot(){
@@ -161,9 +204,9 @@ dane::dane(){
 		for(int j=0; j<yElem; j++){
 			space[i][j] = new ldouble[zElem];
 			density[i][j] = new int[zElem];
-			pot[i][j] = new ldouble[zElem];		
+			pot[i][j] = new ldouble[zElem];
 			for(int k=0; k<zElem; k++)
-				space[i][j][k] = 1.0/(dx*sqrt(double(i*i + j*j + k*k)));
+				space[i][j][k] = 1.0/(dx*sqrt(double(i*i + j*j + k*k))); // ztablicowane odległości.
 		}
 	}
 
@@ -173,16 +216,16 @@ dane::dane(){
 		for(int j=0; j<yElem; j++){
 			place[i][j] = new massPoint[zElem];
 			for(int k=0; k<zElem; k++)
-				place[i][j][k] = massPoint( dx*(i-xElemD2) + dx12, dx*(j-yElemD2) + dx12, dx*(k-zElemD2) + dx12, 0);
+				place[i][j][k] = massPoint( dx*(i-xElemD2+.5) + dx12, dx*(j-yElemD2+.5) + dx12, dx*(k-zElemD2+.5) + dx12, 0); // duże niedokładności tu są.
 		}
 	}
 	////////////// Koniec alokacji, przypisywanie.
 
 	int xIndx, yIndx, zIndx;
 	for(int i=0; i<N; i++){
-		xIndx = rand()%xElem;
-		yIndx = rand()%yElem;
-		zIndx = rand()%zElem;
+		xIndx = rand()%xElemD2;
+		yIndx = rand()%yElemD2;
+		zIndx = rand()%zElemD2;
 		place[xIndx][yIndx][zIndx].liczba++; // ilość cząstek w komórce
 	}
 
@@ -190,6 +233,48 @@ dane::dane(){
 		for(int j=0; j<yElem; j++){
 			for(int k=0; k<zElem; k++)
 				density[i][j][k] = place[i][j][k].liczba;
+		}
+	}
+
+	// Przypisanie omegi, ten algorytm jest do poprawy TODO
+	float max = indxDstce2(xElem, yElem, zElem); // dystans w kwadracie ineksów daje.
+	float rIndx = max;
+	float min = 0; // najmniejszy promień który jeszcze nie był rozważany
+	while( min != max ){
+		rIndx = max;
+		for(int i=0; i<xElem; i++){
+			for(int j=0; j<yElem; j++){
+				for(int k=0; k<zElem; k++){
+					float temp = indxDstce2(i, j, k);
+					if( temp < rIndx && temp - min > 0.1)
+						rIndx = temp;
+				}
+			}
+		}
+		int ileCzastek = 0;
+		min = rIndx;
+		for(int i=0; i<xElem; i++){
+			for(int j=0; j<yElem; j++){
+				for(int k=0; k<zElem; k++){
+					float temp = indxDstce2(i, j, k);
+					if(temp < min)
+						ileCzastek += place[i][j][k].liczba;
+				}
+			}
+		}
+		
+		ldouble w = sqrt(Gm*ileCzastek/pow(rIndx*dx2, 1.5));
+		ldouble coswt = cos(dt*w);
+		ldouble sinwt = sin(dt*w);
+		for(int i=0; i<xElem; i++){
+			for(int j=0; j<yElem; j++){
+				for(int k=0; k<zElem; k++){
+					if( fabs(indxDstce2(i, j, k) - rIndx) < 0.1 ){ // czy jest możliwość że się nie zakręcą?
+						place[i][j][k].x = place[i][j][k].oldX*coswt - place[i][j][k].oldY*sinwt;
+						place[i][j][k].y = place[i][j][k].oldX*sinwt + place[i][j][k].oldY*coswt;
+					}
+				}
+			}
 		}
 	}
 
@@ -229,24 +314,40 @@ void dane::potAssign(){ // zmienić algorytm
 }
 
 void dane::potEdge(){
-	for(int i=0; i<xElem; i++){
+	for(int i=0; i<xElem; i++){ // zmienić algorytm
 		for(int j=0; j<yElem; j++){
 			pot[i][j][0] = 0.0;
 			pot[i][j][zEdge] = 0.0;
 			for(int wspZ=0; wspZ<zElem; wspZ++){
 				for(int wspX=0; wspX<xElem; wspX++){
-					for(int wspY=0; wspY<yElem; wspY++){
-						pot[i][j][0] -= i==wspX && j == wspY && wspZ == 0 ? 0 : density[wspX][wspY][wspZ] * space[abs(i-wspX)][abs(j-wspY)][wspZ];
-						pot[i][j][zEdge] -= i == wspX && j == wspY && wspZ == zEdge ? 0 : density[wspX][wspY][zEdge - wspZ] * space[abs(i-wspX)][abs(j-wspY)][zEdge - wspZ];
+					for(int wspY=0; wspY<j; wspY++){
+						pot[i][j][0] -= density[wspX][wspY][wspZ] * space[abs(i-wspX)][j-wspY][wspZ];
+						pot[i][j][zEdge] -= density[wspX][wspY][wspZ] * space[abs(i-wspX)][j-wspY][zEdge - wspZ];
+					}
+					for(int wspY=j+1; wspY<yElem; wspY++){
+						pot[i][j][0] -= density[wspX][wspY][wspZ] * space[abs(i-wspX)][wspY-j][wspZ];
+						pot[i][j][zEdge] -= density[wspX][wspY][wspZ] * space[abs(i-wspX)][wspY-j][zEdge - wspZ];
 					}
 				}
+				for(int wspX=0; wspX<i; wspX++){ // wspY = j
+					pot[i][j][0] -= density[wspX][j][wspZ] * space[i-wspX][0][wspZ];
+					pot[i][j][zEdge] -= density[wspX][j][wspZ] * space[i-wspX][0][zEdge - wspZ];
+				}
+				for(int wspX=i+1; wspX<xElem; wspX++){
+					pot[i][j][0] -= density[wspX][j][wspZ] * space[wspX-i][0][wspZ];
+					pot[i][j][zEdge] -= density[wspX][j][wspZ] * space[wspX-i][0][zEdge - wspZ];
+				}
+			}
+			for(int wspZ=1; wspZ<zElem; wspZ++){ // dla wspY = j i wspX = i 
+				pot[i][j][0] -= density[i][j][wspZ] * space[0][0][wspZ];
+				pot[i][j][zEdge] -= density[i][j][wspZ] * space[0][0][zEdge - wspZ + 1];
 			}
 			pot[i][j][0] *= Gm;
-			pot[i][j][zEdge] *= Gm; 
+			pot[i][j][zEdge] *= Gm;
 		}
 	}
 
-	for(int k=1; k<zEdge; k++){
+	for(int k=1; k<zEdge; k++){ // nie jestem pewny czy to dziala
 		pot[0][0][k] = 0.0;
 		pot[0][yEdge][k] = 0.0;
 		pot[xEdge][0][k] = 0.0;
@@ -322,7 +423,6 @@ void dane::potEdge(){
 			pot[i][yEdge][k] *= Gm;
 		}
 	}
-
 }
 
 void dane::potAss1stIter(){

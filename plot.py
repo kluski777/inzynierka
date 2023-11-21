@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 
 def plotPot(fileName, pltTitle):
     with open(fileName, 'r') as file:
@@ -12,7 +13,8 @@ def plotPot(fileName, pltTitle):
     x = np.arange(1, len(content[0])+1)
     y = np.arange(1, len(content)+1)
     X, Y = np.meshgrid(x,y)
-    print(f"len(X) = {len(X)}, lenY = {len(Y)}, len(content[0]) = {len(content[0])}, len(content) = {len(content)}")
+    print("Potencjal")
+    #print(f"len(X) = {len(X)}, lenY = {len(Y)}, len(content[0]) = {len(content[0])}, len(content) = {len(content)}")
 
     plt.contourf(X, Y, content, cmap='cool', levels=100)
     plt.title(pltTitle)
@@ -22,44 +24,43 @@ def plotPot(fileName, pltTitle):
     plt.savefig(fileName)
     plt.close()
 
-def plotPath(fileName, pltTitle):
-    with open(fileName, "r") as content:
-        content = content.read()
-        content = content.split('\n')
-        content = [i.split(' ') for i in content if i != '']
- 
-    content = [[float(j) for j in i if j != ''] for i in content]
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
+def read3D(fileName):
+    with open(fileName, "rb") as content:
+        content = content.read().decode('utf-8')
+        print(f"len(content) = {len(content)}")
+        content = content.split('\t')
+        content = content[:-1]
+        content = [i.strip().split('\n') for i in content]
+        content = [[j.strip().split(' ') for j in i] for i in content]
+        
+    content = [[[float(k) for k in j] for j in i] for i in content]
 
-    content = np.array(content)
+    return content
 
-    x = [i[0] for i in content]
-    y = [i[1] for i in content]
-    z = [i[2] for i in content]
-
-    ax.plot(x, y, z)
-    ax.set_title(pltTitle)
-    ax.set_xlabel('x [m]')
-    ax.set_ylabel('y [m]')
-    ax.set_zlabel('z [m]')
-    fig.savefig(fileName + '3d')
-    plt.close(fig)
+plotPot("Potencjal1", "Potencjał na całej siatce dla Z_indx = 0")
+plotPot("Potencjal2", "Potencjał na całej siatce dla Z_indx = 1")
+plotPot("Potencjal3", "Potencjał na całej siatce dla Z_indx = 2")
+plotPot("Potencjal4", "Potencjał na całej siatce dla Z_indx = 3")
+plotPot("densityBef", "Gęstość dla Z_indx=1 przed iteracją")
+plotPot("densityAfter", "Gęstość dla Z_indx=1 po iteracji")
 
 
-    plt.plot(x, y)
-    plt.title(pltTitle)
-    plt.xlabel('x [m]')
-    plt.ylabel('y [m]')
-    plt.savefig(fileName + '2d')
-    plt.close()
+wholeData = read3D("droga")
+wholeData = np.array(wholeData)
+toPlot = wholeData[0]
 
-#plotPot("Potencjal1", "Potencjał na całej siatce dla Z_indx = 0")
-#plotPot("Potencjal2", "Potencjał na całej siatce dla Z_indx = 1")
-#plotPot("Potencjal3", "Potencjał na całej siatce dla Z_indx = 2")
-#plotPot("Potencjal4", "Potencjał na całej siatce dla Z_indx = 3")
+fig, ax = plt.subplots()
 
-plotPath("czastka1", "Droga cząstki 1")
-plotPath("czastka2", "Droga cząstki 2")
-plotPath("czastka3", "Droga cząstki 3")
-plotPath("czastka4", "Droga cząstki 4")
+scatter = ax.scatter(toPlot[:,0], toPlot[:,1], s=1)
+
+
+def update(frame):
+    toPlot = wholeData[frame]
+    scatter.set_offsets(np.column_stack((toPlot[:,0], toPlot[:,1])))
+
+    return scatter,
+
+animation = FuncAnimation(plt.gcf(), update, frames=40, interval=1, blit=True, repeat=False)
+
+animation.save('scatterAnimation.gif', writer='pillow')
+
