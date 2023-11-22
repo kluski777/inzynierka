@@ -2,7 +2,7 @@
 #define _FUN_POMOCNICZE_
 
 typedef long double ldouble; 	// zmienić zmienną na jakąś dokładniejszą.
-const int zElem = 6; 			// zawsze parzysta ma być!
+const int zElem = 4; 			// zawsze parzysta ma być!
 const int xElem = zElem*10, yElem = zElem*10;
 const int xEdge = xElem-1, yEdge = yElem-1, zEdge = zElem-1; 
 const int N = xElem*zElem*yElem*10;
@@ -11,13 +11,12 @@ const int xElemD2 = xElem/2, yElemD2 = yElem/2, zElemD2 = zElem/2;
 
 
 ///////////////////////////// Dane wielkości
-const ldouble T = 6.93792e15;             // okres obrotu w sekundach
-const ldouble M = 6e42;                   // Masa całej galaktyki
+const ldouble okres = 6.93792e15;			// okres obrotu w sekundach
+const ldouble M = 2.9835e42;                  	// Masa całej galaktyki
 const ldouble mMin = M/N;                 // masa 1 cząstki w kg
-const ldouble G = 6.67e-11;               // stała grawitacyjna w SI.
-//const ldouble w = 2*M_PI/T;             // częstość kołowa rad.
-const ldouble dt = T/1000;                // krok czasowy, minimum 1000 kroków na obrót
-const ldouble dx = 9.258e19/zElem;        // wymiar jednej kratki
+const ldouble G = 6.6743e-11;               // stała grawitacyjna w SI.
+const ldouble dt = okres/1000;            // krok czasowy, minimum 1000 kroków na obrót
+const ldouble dx = 9.25703274384e19/zElem;        // wymiar jednej kratki
 
 
 //////////////////////////// Pomocnicze żeby przyspieszyć obliczenia
@@ -38,9 +37,9 @@ const ldouble one6th = 1.0/6.0;
 inline int xCoord2indx(ldouble coord){ return round((coord-dx12)/dx + xElemD2); }
 inline int yCoord2indx(ldouble coord){ return round((coord-dx12)/dx + yElemD2); }
 inline int zCoord2indx(ldouble coord){ return round((coord-dx12)/dx + zElemD2); }
-inline ldouble xIndx2Coord(int indx){  return (indx-xElemD2+.5)*dx + dx12; }
-inline ldouble yIndx2Coord(int indx){  return (indx-yElemD2+.5)*dx + dx12; }
-inline ldouble zIndx2Coord(int indx){  return (indx-zElemD2+.5)*dx + dx12; }
+inline ldouble xIndx2Coord(int indx){  return (indx-xElemD2+.5)*dx; }
+inline ldouble yIndx2Coord(int indx){  return (indx-yElemD2+.5)*dx; }
+inline ldouble zIndx2Coord(int indx){  return (indx-zElemD2+.5)*dx; }
 inline float indxDstce2(int i, int j, int k){	return pow(i-xElemD2+.5, 2) + pow(j-yElemD2+.5, 2) + pow(k-zElemD2+.5, 2); }
 
 template <typename T> void saveMap(T*** arr, int k, std::string title){

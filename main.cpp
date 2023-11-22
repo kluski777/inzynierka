@@ -58,7 +58,7 @@ void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& T, l
 	else
 		point.z = 2*Z - point.oldZ - GM*Z*cr3;
 
-	T += dt4*(pow(point.x - point.oldX, 2) + pow(point.y - point.oldY, 2) + pow(point.z - point.oldZ, 2));
+	T += point.liczba*dt4*(pow(point.x - point.oldX, 2) + pow(point.y - point.oldY, 2) + pow(point.z - point.oldZ, 2));
 
 	point.oldX = X;
 	point.oldY = Y;
@@ -71,7 +71,7 @@ void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& T, l
 	if( i >= 0 && i < xElem && j >= 0 && j < yElem && k >= 0 && k < zElem)
 		density[i][j][k] += point.liczba;	// tyle w siatce
 	else
-		V -= GM*point.liczba/r; 		// jak wyszła za siatkę.
+		V -= GM*point.liczba/r; 				// jak wyszła za siatkę.
 }
 
 
@@ -81,38 +81,25 @@ void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& T, l
 
 int main(){
 	dane symEZ;
-/*
-	for(int i=0; i<xElem; i++){
-		for(int j=0; j<yElem; j++){
-			for(int k=0; k<zElem; k++)
-				printf("wsp (%d, %d, %d) coords => (%Le, %Le, %Le) indx(coords)=> (%d, %d, %d)\n", i, j, k, symEZ.place[i][j][k].x, symEZ.place[i][j][k].y, symEZ.place[i][j][k].z, xCoord2indx(symEZ.place[i][j][k].x), yCoord2indx(symEZ.place[i][j][k].y), zCoord2indx(symEZ.place[i][j][k].z));
-		}
-	}
-*/
-	
+
 	std::ofstream prtcles("droga", std::ios::binary);
 	std::ofstream ener("Energie",  std::ios::binary);
 
 	ldouble* Es = new ldouble[2]; // energie, Es[0] - kinet. Es[1] - potencja.
-	int ile = 0;
 
-	for(int step=0; step<400; step++){
+	for(int step=0; step<1000; step++){
 		symEZ.step(step, Es);
 		
 		ener << step << " " << Es[0] << " " << Es[1] << " " << Es[0] + Es[1] << std::endl;
 		std::cout << "T = " << Es[0] << ", V = " << Es[1] << ", E = " << Es[0] + Es[1] << std::endl;
-		
-		if( step%25 == 0 ){
-			ile++;
-			std::cout << step << ", ile = " << ile << std::endl;
-			for(int i=0; i<xElem; i++){
-				for(int j=0; j<yElem; j++){
-					for(int k=0; k<zElem; k++)
-						prtcles << symEZ.place[i][j][k].x << ' ' << symEZ.place[i][j][k].y << ' ' << symEZ.place[i][j][k].z << std::endl;
-				}
+		prtcles << symEZ.place[0][0][0].x << " " << symEZ.place[0][0][0].y << std::endl;
+		for(int i=0; i<xElem; i++){
+			for(int j=0; j<yElem; j++){
+				for(int k=0; k<zElem; k++)
+					prtcles << symEZ.place[i][j][k].x << " " << symEZ.place[i][j][k].y << " " << symEZ.place[i][j][k].z << std::endl;
 			}
-			prtcles << "\t";
 		}
+		prtcles << "\t";
 	}
 	int suma=0, sumX=0, sumY=0, sumZ=0; // sumy cząstek które wywaliło z planszy
 
@@ -157,24 +144,20 @@ void dane::step(int i, ldouble* Es){
 	Es[0] = 0.0, Es[1] = 0.0;		// 0 to kinetyczna energia, 1 to potencjalna
 	for(int k=0; k<zElem; k++){ 
 		for(int i=0; i<xElem; i++){
-			verletStep(place[i][i][k], pot, density, Es[0], Es[1]);
-			for(int j=i+1; j<yElem; j++){
+			for(int j=0; j<yElem; j++)
 				verletStep(place[i][j][k], pot, density, Es[0], Es[1]);
-				verletStep(place[j][i][k], pot, density, Es[0], Es[1]);
-			}
 		}
 	}
 	
 	Es[0] *= m2;
 
-	//if( i%10 == 0 )
+	//if( i%10 == 0 ) // co ile liczyć ściany
 	potEdge();
 	potAssign();
 	for(int k=0; k<zElem; k++){
 		for(int i=0; i<xElem; i++){
-			Es[1] += density[i][i][k]*pot[i][i][k];
-			for(int j=i+1; j<yElem-i; j++)
-				Es[1] += density[i][j][k] * pot[i][j][k] + density[j][i][k]*pot[j][i][k];
+			for(int j=0; j<yElem; j++)
+				Es[1] += density[i][j][k] * pot[i][j][k];
 		}
 	}
 
@@ -216,7 +199,7 @@ dane::dane(){
 		for(int j=0; j<yElem; j++){
 			place[i][j] = new massPoint[zElem];
 			for(int k=0; k<zElem; k++)
-				place[i][j][k] = massPoint( dx*(i-xElemD2+.5) + dx12, dx*(j-yElemD2+.5) + dx12, dx*(k-zElemD2+.5) + dx12, 0); // duże niedokładności tu są.
+				place[i][j][k] = massPoint( dx*(i-xElemD2)+dx12, dx*(j-yElemD2)+dx12, dx*(k-zElemD2)+dx12, 0); // duże niedokładności tu są.
 		}
 	}
 	////////////// Koniec alokacji, przypisywanie.
@@ -236,7 +219,7 @@ dane::dane(){
 		}
 	}
 
-	// Przypisanie omegi, ten algorytm jest do poprawy TODO
+	// Chyba działa, można by tylko nieco lepiej napisać i to wszystko.
 	float max = indxDstce2(xElem, yElem, zElem); // dystans w kwadracie ineksów daje.
 	float rIndx = max;
 	float min = 0; // najmniejszy promień który jeszcze nie był rozważany
@@ -300,7 +283,7 @@ dane::~dane(){
 }
 
 void dane::potAssign(){ // zmienić algorytm
-	for(int repeat=0; repeat<3; repeat++){
+	for(int repeat=0; repeat<10; repeat++){
 		for(int k=1; k<zEdge; k++){
 	  		for(int i=1; i<xEdge; i++){
 				pot[i][i][k] = one6th*(pot[i-1][i][k]+pot[i+1][i][k]+pot[i][i-1][k]+pot[i][i+1][k]+pot[i][i][k+1]+pot[i][i][k-1] - potConst*density[i][i][k]);
@@ -314,7 +297,7 @@ void dane::potAssign(){ // zmienić algorytm
 }
 
 void dane::potEdge(){
-	for(int i=0; i<xElem; i++){ // zmienić algorytm
+	for(int i=0; i<xElem; i++){
 		for(int j=0; j<yElem; j++){
 			pot[i][j][0] = 0.0;
 			pot[i][j][zEdge] = 0.0;
