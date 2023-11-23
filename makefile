@@ -4,7 +4,7 @@ SOURCES = main.cpp
 TARGET=compiled
 
 all: $(TARGET)
-	./$(TARGET)	
+	time ./$(TARGET)	
 
 $(TARGET): $(SOURCES)
 	$(CXX) $(CXXFLAGS) $(SOURCES) -o $(TARGET)

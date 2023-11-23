@@ -1,22 +1,30 @@
 #ifndef _FUN_POMOCNICZE_
 #define _FUN_POMOCNICZE_
 
+/* Sprawdzić brzegi i dlaczego cząstki przyspieszają?
+ * 
+ * 
+ * 
+ * 
+*/
+
 typedef long double ldouble; 	// zmienić zmienną na jakąś dokładniejszą.
-const int zElem = 4; 			// zawsze parzysta ma być!
+const int zElem = 8; 			// zawsze parzysta ma być!
 const int xElem = zElem*10, yElem = zElem*10;
+
 const int xEdge = xElem-1, yEdge = yElem-1, zEdge = zElem-1; 
 const int N = xElem*zElem*yElem*10;
 
 const int xElemD2 = xElem/2, yElemD2 = yElem/2, zElemD2 = zElem/2;
-
+const int xElemD4 = xElemD2/2, yElemD4 = yElemD2/2, zElemD4 = zElemD2/2;
 
 ///////////////////////////// Dane wielkości
 const ldouble okres = 6.93792e15;			// okres obrotu w sekundach
-const ldouble M = 2.9835e42;                  	// Masa całej galaktyki
+const ldouble M = 2.9835e42;              // Masa całej galaktyki
 const ldouble mMin = M/N;                 // masa 1 cząstki w kg
-const ldouble G = 6.6743e-11;               // stała grawitacyjna w SI.
-const ldouble dt = okres/1000;            // krok czasowy, minimum 1000 kroków na obrót
-const ldouble dx = 9.25703274384e19/zElem;        // wymiar jednej kratki
+const ldouble G = 6.6743e-11; 				// stała grawitacyjna w SI.
+const ldouble dt = okres/1000;           // krok czasowy, minimum 1000 kroków na obrót
+const ldouble dx = 9.25703274384e19/zElem;// wymiar jednej kratki
 
 
 //////////////////////////// Pomocnicze żeby przyspieszyć obliczenia

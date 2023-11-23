@@ -26,6 +26,7 @@ class dane{
 		void potAss1stIter();
 		void savePot();
 		void step(int, ldouble*);
+		void getAllInfo();
 };
 
 void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& T, ldouble& V){
@@ -53,37 +54,37 @@ void verletStep(massPoint & point, ldouble*** pot, int*** density, ldouble& T, l
 	else
 		point.y = 2*Y - point.oldY - GM*Y*cr3;
 
-	if(k > 0 && k < zElem-1 && i>=0 && i<xElem && j>=0 && j<yElem)
-		point.z = 2*Z - point.oldZ - (pot[i][j][k+1] - pot[i][j][k-1])*dt2dx;
-	else
-		point.z = 2*Z - point.oldZ - GM*Z*cr3;
+// Jak odkomentowac linijki z dołu to nie działa, energia nie zachowana, cząstki wylatują.
+//	if(k > 0 && k < zElem-1 && i>=0 && i<xElem && j>=0 && j<yElem)
+//		point.z = 2*Z - point.oldZ - (pot[i][j][k+1] - pot[i][j][k-1])*dt2dx;
+//	else
+//		point.z = 2*Z - point.oldZ - GM*Z*cr3;
 
-	T += point.liczba*dt4*(pow(point.x - point.oldX, 2) + pow(point.y - point.oldY, 2) + pow(point.z - point.oldZ, 2));
+	T += point.liczba*dt4*(pow(point.x - point.oldX, 2) + pow(point.y - point.oldY, 2));
 
 	point.oldX = X;
 	point.oldY = Y;
-	point.oldZ = Z;
+//	point.oldZ = Z;
 
 	i = xCoord2indx(point.x);
 	j = yCoord2indx(point.y);
 	k = zCoord2indx(point.z);
 	
 	if( i >= 0 && i < xElem && j >= 0 && j < yElem && k >= 0 && k < zElem)
-		density[i][j][k] += point.liczba;	// tyle w siatce
+		density[i][j][k] += point.liczba;
 	else
-		V -= GM*point.liczba/r; 				// jak wyszła za siatkę.
+		V -= GM*point.liczba/r;
 }
 
 
 
 
-// może funkcje konwerujące nie działają
-
 int main(){
 	dane symEZ;
+//	symEZ.getAllInfo();
 
 	std::ofstream prtcles("droga", std::ios::binary);
-	std::ofstream ener("Energie",  std::ios::binary);
+	std::ofstream ener("Energie" , std::ios::binary);
 
 	ldouble* Es = new ldouble[2]; // energie, Es[0] - kinet. Es[1] - potencja.
 
@@ -91,21 +92,21 @@ int main(){
 		symEZ.step(step, Es);
 		
 		ener << step << " " << Es[0] << " " << Es[1] << " " << Es[0] + Es[1] << std::endl;
-		std::cout << "T = " << Es[0] << ", V = " << Es[1] << ", E = " << Es[0] + Es[1] << std::endl;
-		prtcles << symEZ.place[0][0][0].x << " " << symEZ.place[0][0][0].y << std::endl;
-		for(int i=0; i<xElem; i++){
-			for(int j=0; j<yElem; j++){
-				for(int k=0; k<zElem; k++)
-					prtcles << symEZ.place[i][j][k].x << " " << symEZ.place[i][j][k].y << " " << symEZ.place[i][j][k].z << std::endl;
+		std::cout << step << " T = " << Es[0] << ", V = " << Es[1] << ", E = " << Es[0] + Es[1] << std::endl;
+		for(int i=0; i<3; i++){
+			for(int j=0; j<3; j++){
+				for(int k=0; k<3; k++)
+				prtcles << symEZ.place[i][j][k].x << " " << symEZ.place[i][j][k].y << " " << symEZ.place[i][j][k].z << std::endl;
 			}
 		}
 		prtcles << "\t";
 	}
+	
 	int suma=0, sumX=0, sumY=0, sumZ=0; // sumy cząstek które wywaliło z planszy
 
-	for(int i=0; i<xElem; i++){
-		for(int j=0; j<yElem; j++){
-			for(int k=0; k<zElem; k++){
+	for(int i=0; i<xElemD2; i++){
+		for(int j=0; j<yElemD2; j++){
+			for(int k=0; k<zElemD2; k++){
 				int x = xCoord2indx(symEZ.place[i][j][k].x);
 				int y = yCoord2indx(symEZ.place[i][j][k].y);
 				int z = zCoord2indx(symEZ.place[i][j][k].z);
@@ -142,37 +143,27 @@ int main(){
 
 void dane::step(int i, ldouble* Es){
 	Es[0] = 0.0, Es[1] = 0.0;		// 0 to kinetyczna energia, 1 to potencjalna
-	for(int k=0; k<zElem; k++){ 
-		for(int i=0; i<xElem; i++){
-			for(int j=0; j<yElem; j++)
+	for(int k=0; k<zElemD2; k++){ 
+		for(int i=0; i<xElemD2; i++){
+			for(int j=0; j<yElemD2; j++)
 				verletStep(place[i][j][k], pot, density, Es[0], Es[1]);
 		}
 	}
-	
+
 	Es[0] *= m2;
 
-	//if( i%10 == 0 ) // co ile liczyć ściany
-	potEdge();
+	if( i%3 == 0 ) // co ile liczyć ściany?
+		potEdge();
 	potAssign();
 	for(int k=0; k<zElem; k++){
 		for(int i=0; i<xElem; i++){
-			for(int j=0; j<yElem; j++)
-				Es[1] += density[i][j][k] * pot[i][j][k];
+			Es[1] += density[i][i][k] * pot[i][i][k];
+			for(int j=i+1; j<yElem; j++)
+				Es[1] += density[i][j][k] * pot[i][j][k] + density[j][i][k] * pot[j][i][k];
 		}
 	}
 
 	Es[1] *= mMin;
-}
-
-void dane::savePot(){
-	for(int k=0; k<zElem; k++){
-		std::ofstream potFile("Potencjal" + std::to_string(k+1), std::ios::binary);
-		for(int i=0; i<xElem; i++){
-			for(int j=0; j<yElem; j++)
-				potFile << pot[i][j][k] << " ";
-			potFile << std::endl;
-		}
-	}
 }
 
 dane::dane(){
@@ -204,22 +195,18 @@ dane::dane(){
 	}
 	////////////// Koniec alokacji, przypisywanie.
 
+
 	int xIndx, yIndx, zIndx;
 	for(int i=0; i<N; i++){
-		xIndx = rand()%xElemD2;
-		yIndx = rand()%yElemD2;
-		zIndx = rand()%zElemD2;
-		place[xIndx][yIndx][zIndx].liczba++; // ilość cząstek w komórce
+		xIndx = rand()%xElem;
+		yIndx = rand()%yElem;
+		zIndx = rand()%zElem;
+		place[xIndx][yIndx][zIndx].liczba++;
+		density[xIndx][yIndx][zIndx]++;
 	}
 
-	for(int i=0; i<xElem; i++){
-		for(int j=0; j<yElem; j++){
-			for(int k=0; k<zElem; k++)
-				density[i][j][k] = place[i][j][k].liczba;
-		}
-	}
-
-	// Chyba działa, można by tylko nieco lepiej napisać i to wszystko.
+	// dobrze byłoby wrzucić nowe omegi tutaj
+	// algorytm przerobić żeby tylko 1/8 kwadratu brał
 	float max = indxDstce2(xElem, yElem, zElem); // dystans w kwadracie ineksów daje.
 	float rIndx = max;
 	float min = 0; // najmniejszy promień który jeszcze nie był rozważany
@@ -260,7 +247,6 @@ dane::dane(){
 			}
 		}
 	}
-
 	potEdge();			// Przypisanie do brzegów (powinno sie szybciej liczyć).
 	potAss1stIter();	// Reszta tablicy liczona do zbieżności.
 }
@@ -283,7 +269,7 @@ dane::~dane(){
 }
 
 void dane::potAssign(){ // zmienić algorytm
-	for(int repeat=0; repeat<10; repeat++){
+	for(int repeat=0; repeat<8; repeat++){
 		for(int k=1; k<zEdge; k++){
 	  		for(int i=1; i<xEdge; i++){
 				pot[i][i][k] = one6th*(pot[i-1][i][k]+pot[i+1][i][k]+pot[i][i-1][k]+pot[i][i+1][k]+pot[i][i][k+1]+pot[i][i][k-1] - potConst*density[i][i][k]);
@@ -296,7 +282,7 @@ void dane::potAssign(){ // zmienić algorytm
 	}
 }
 
-void dane::potEdge(){
+void dane::potEdge(){ // sprawdzić czy ściany sie zgadzają.
 	for(int i=0; i<xElem; i++){
 		for(int j=0; j<yElem; j++){
 			pot[i][j][0] = 0.0;
@@ -425,5 +411,61 @@ void dane::potAss1stIter(){
 	}
 }
 
-// TODO jakiś refactoring czy coś w ten deseń żeby wszystko było bardziej czytelne
+
+void dane::getAllInfo(){
+	std::ofstream brzegDol("DolnyPot", 		std::ios::binary);
+	std::ofstream brzegGora("GornyPot", 	std::ios::binary);
+	std::ofstream brzegPrawy("PrawyPot", 	std::ios::binary);
+	std::ofstream brzegLewy("LewyPot", 		std::ios::binary);
+	std::ofstream brzegOdNas("PrzyNasPot", std::ios::binary);
+	std::ofstream brzegDaleko("DalszyPot", std::ios::binary);
+
+	for(int i=0; i<xElem; i++){
+		for(int j=0; j<yElem; j++){
+			brzegDol  << pot[i][j][0] << " ";
+			brzegGora << pot[i][j][zEdge] << " ";
+		}
+		brzegDol  << std::endl;
+		brzegGora << std::endl;
+	}
+
+	for(int i=0; i<xElem; i++){
+		for(int k=0; k<zElem; k++){
+			brzegPrawy 	<< pot[i][yEdge][k] 	<< " ";
+			brzegLewy  << pot[i][0][k] 		<< " ";
+			brzegDaleko << pot[xEdge][i][k] 	<< " ";
+			brzegOdNas 	<< pot[0][i][k] 		<< " ";
+		}
+		brzegLewy 	<< std::endl;
+		brzegPrawy 	<< std::endl;
+		brzegOdNas  << std::endl;
+		brzegDaleko << std::endl;
+	}
+
+	std::ofstream dens("koncentracjaPlanet", std::ios::binary);
+	std::ofstream potFile("potencjal", std::ios::binary);
+
+	for(int i=0; i<xElem; i++){
+		for(int j=0; j<yElem; j++){
+			for(int k=0; k<zElem; k++){
+				dens		<< density[i][j][k] 	<< " ";
+				potFile  << pot[i][j][k] 		<< " ";
+			}
+			dens 		<< std::endl;
+			potFile 	<< std::endl;
+		}
+		dens << "\t";
+		potFile << "\t";
+	}
+
+	potFile.close();
+	dens.close();
+	brzegDol.close();
+	brzegGora.close();
+	brzegDaleko.close();
+	brzegOdNas.close();
+	brzegLewy.close();
+	brzegPrawy.close();
+}
+
 // TODO niedokładności na poziomie ~5% przy przypisaniu wartości początkowych, ~1/6 dx
